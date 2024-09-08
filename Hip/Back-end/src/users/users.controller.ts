@@ -50,12 +50,16 @@ import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { User } from './user.entity';
 import { HashService } from '../hash/hash.service';
+import { JwtService } from '@nestjs/jwt'; // JWT 모듈 사용;
+import { UnauthorizedException } from '@nestjs/common';
+import * as bcrypt from 'bcrypt'; // 비밀번호 암호화를 위한 bcrypt;
 
 @Controller('users')
 export class UsersController {
   constructor(
     private readonly usersService: UsersService,
     private readonly hashService: HashService,
+    private readonly jwtService: JwtService,
   ) {}
 
   @Post('register')
@@ -87,12 +91,32 @@ export class UsersController {
   }
 
   @Post('login')
-  async login(
-    @Body() body: { id: string; password: string },
-  ): Promise<{ message: string }> {
-    const result = await this.usersService.login(body.id, body.password);
-    return { message: result }; // 로그인 성공 시 메시지 또는 토큰 반환
+  async login(@Body() body: { id: string; password: string }): Promise<{ token: string }> {
+    const user = await this.usersService.findUserById(body.id); // DB에서 ID로 사용자 찾기
+
+    if (!user) {
+      // 사용자가 없을 경우 에러 발생
+      throw new UnauthorizedException('해당 아이디가 존재하지 않습니다.');
+    }
+
+    const isPasswordMatching = await bcrypt.compare(body.password, user.password);
+    console.log('비밀번호 일치 여부:', isPasswordMatching);
+    if (!isPasswordMatching) {
+      // 비밀번호가 일치하지 않을 경우 에러 발생
+      throw new UnauthorizedException('비밀번호가 틀렸습니다.');
+    }
+
+    // JWT 페이로드 생성
+    const payload = { id: user.id};
+
+    // JWT 토큰 생성
+    const token = this.jwtService.sign(payload);
+
+    // 성공적으로 로그인한 경우, JWT 토큰 반환
+    return { token };
+    console.log(token);
   }
+
 
   @Put(':userid')
   async update(
